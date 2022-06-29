@@ -36,7 +36,7 @@
 // DO NOT CHANGE these struct defintions
 
 typedef unsigned char byte;
-typedef byte* byte_addr;
+typedef byte* byte_addr; // typedef void* addr;
 
 /** The header for a chunk. */
 typedef struct header {
@@ -53,6 +53,7 @@ typedef struct heap_information {
     uint32_t free_capacity; /**< maximum number of free chunks (maximum elements in free_list[]) */
     uint32_t n_free;        /**< current number of free chunks */
 } heap_information_type;
+// byte** -> addr* a list of address
 
 // Footnote:
 // The type unsigned char is the safest type to use in C for a raw array of bytes
@@ -71,14 +72,93 @@ static struct heap_information my_heap;
 
 // Initialise my_heap
 int init_heap(uint32_t size) {
-    // PUT YOUR CODE HERE
+    // allocates (using malloc()) a region of memory of size bytes.
+    // If size is less than the minimum heap size (4096), then size is set to the minimum heap size.
+    size = (size < MIN_HEAP) ? MIN_HEAP : size;
+
+    // The value of size is also rounded up to the nearest multiple of 4
+    if (size % 4)
+        size *= size / 4 + 1;
+
+    // sets my_heap.heap_mem to point to the first byte of the allocated region
+    my_heap.heap_mem = calloc(size, sizeof(byte));
+    if (my_heap.heap_mem == NULL) {
+        fprintf(stderr, "Fatal: failed to allocate %d bytes\n", size);
+        exit(EXIT_FAILURE);
+    }
+
+    // number of bytes in my_heap
+    my_heap.heap_size = size;
+    my_heap.n_free = 1;
+
+    // allocates a free_list array(a list of byte*) of size/HEADER_SIZE, containing pointers to the free chunks in heap_mem
+    my_heap.free_capacity = size / HEADER_SIZE;
+
+    // free_list中每一个元素为一个byte*指着freeChunk，默认大小为size/HEADER_SIZE
+    my_heap.free_list = calloc(my_heap.free_capacity, sizeof(byte_addr));
+
+    // Initially, free_list[0] and my_heap.heap_mem points to the same address
+    my_heap.free_list[0] = my_heap.heap_mem;
+
+    // sets the first item in this byte_addr array to the single free-space chunk
+    // struct header* hd = my_heap.free_list[0];
+    // struct header* hd = my_heap.heap_mem;
+    // hd->status = FREE;
+    // hd->size = size;
+
+    // sets the mata data of the first freeChunk
+    // byte_addr first_chunk = my_heap.heap_mem;
+    // memset(first_chunk, 0xAA, sizeof(uint32_t));
+    // *(int*)(first_chunk + 4) = size;
+
+    ((struct header*)my_heap.heap_mem)->status = FREE;
+    ((struct header*)my_heap.heap_mem)->size = size;
+
     return 0;
 }
 
 // Allocate a chunk of memory large enough to store `size' bytes
 void* my_malloc(uint32_t size) {
-    // PUT YOUR CODE HERE
-    return NULL;
+    // return a pointer to the first usable byte of data (e.g. addr_of_selected_chunk + HEADER_SIZE)
+    if (size % 4)
+        size *= size / 4 + 1;
+
+    // 一共size+HEADER_SIZE
+    size += HEADER_SIZE;
+    // find the minimum eligible chunk
+    // 可以直接通过地址扫描，但是有记录freeChunk的个数n_free，最多找n_free次
+
+    int min_header_idx = -1;
+
+    for (int i = 0; i < my_heap.n_free; i++) {
+        struct header* cur_free_chunk = my_heap.free_list[i];
+        if (cur_free_chunk->size >= size) {
+            if (min_header_idx == -1)
+                min_header_idx = 0;
+            else if (min_header_idx >= 0
+                     && cur_free_chunk->size < ((struct header*)my_heap.free_list[i])->size) {
+                min_header_idx = i;
+            }
+        }
+    }
+
+    if (min_header_idx < 0) {
+        fprintf(stderr, "Fatal: failed to allocate %d bytes\n", size);
+        exit(EXIT_FAILURE);
+    }
+
+    struct header* min_chunk = my_heap.free_list[min_header_idx];
+
+    // allocate allocate memory
+    if (min_chunk->size <= size + MIN_CHUNK_SPLIT) {
+        // allocate whole chunk
+        min_chunk->status = ALLOC;
+    } else {
+        // split it to 2 chunk
+        // make sure my_heap.free_list is sorted by address in ascending
+    }
+
+    return min_chunk->data;
 }
 
 // Deallocate chunk of memory referred to by `ptr'
